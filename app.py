@@ -120,6 +120,26 @@ def get_monthly_deposits():
     conn.close()
     return result or 0.0
 
+# ========== Deposit operations ==========
+
+def add_deposit(roommate, amount, date):
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute(
+        "INSERT INTO deposits (roommate, amount, date) VALUES (?, ?, ?)",
+        (roommate, amount, date),
+    )
+    conn.commit()
+    conn.close()
+
+def get_deposits():
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("SELECT roommate, amount, date FROM deposits ORDER BY date DESC")
+    rows = c.fetchall()
+    conn.close()
+    return rows
+
 # ========== Streamlit app ==========
 
 # Custom rerun function compatible with Streamlit 1.45.1+
@@ -130,6 +150,11 @@ def rerun():
 st.title("🏠 Roommate Expense Manager")
 
 menu = ["Dashboard", "View Roommates", "Add Roommate", "Remove Roommate", "Add Expense", "View Today's Expenses"]
+
+# Append deposits related menu options
+menu.append("Add Deposit")
+menu.append("View Deposits")
+
 choice = st.sidebar.selectbox("Menu", menu)
 
 if choice == "Dashboard":
@@ -140,9 +165,9 @@ if choice == "Dashboard":
     remaining = total_deposits - total_expense_today
 
     col1, col2, col3 = st.columns(3)
-    col1.metric("💸 Today's Expenses", f"${total_expense_today:.2f}")
-    col2.metric("💰 Deposits (1st–5th)", f"${total_deposits:.2f}")
-    col3.metric("🧾 Remaining Balance", f"${remaining:.2f}")
+    col1.metric("💸 Today's Expenses", f"₹{total_expense_today:.2f}")
+    col2.metric("💰 Deposits (1st–5th)", f"₹{total_deposits:.2f}")
+    col3.metric("🧾 Remaining Balance", f"₹{remaining:.2f}")
 
 elif choice == "View Roommates":
     st.subheader("Roommates List")
@@ -193,6 +218,29 @@ elif choice == "View Today's Expenses":
     expenses = get_todays_expenses()
     if expenses:
         for roommate, amount, desc in expenses:
-            st.write(f"- {roommate} paid ${amount:.2f} for {desc}")
+            st.write(f"- {roommate} paid ₹{amount:.2f} for {desc}")
     else:
         st.info("No expenses recorded for today.")
+
+elif choice == "Add Deposit":
+    st.subheader("Add Deposit")
+    roommates = get_roommates()
+    if not roommates:
+        st.warning("Add roommates before adding deposits.")
+    else:
+        selected = st.selectbox("Select Roommate", roommates)
+        amount = st.number_input("Deposit Amount", min_value=0.01, format="%.2f")
+        date_val = st.date_input("Date", value=datetime.now())
+        if st.button("Add Deposit"):
+            add_deposit(selected, amount, date_val.strftime("%Y-%m-%d"))
+            st.success(f"Deposit of ₹{amount:.2f} added for {selected}.")
+            rerun()
+
+elif choice == "View Deposits":
+    st.subheader("All Deposits")
+    deposits = get_deposits()
+    if deposits:
+        for roommate, amount, d in deposits:
+            st.write(f"- {roommate} deposited ₹{amount:.2f} on {d}")
+    else:
+        st.info("No deposits recorded yet.")
