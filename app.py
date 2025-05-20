@@ -1,7 +1,7 @@
 import streamlit as st
 import sqlite3
 import os
-from datetime import datetime
+from datetime import datetime, date
 
 # ========== Database setup ==========
 
@@ -95,6 +95,31 @@ def get_todays_expenses():
     conn.close()
     return rows
 
+# ========== Additional Functions for Dashboard ==========
+
+def get_todays_total_expense():
+    today = datetime.now().strftime("%Y-%m-%d")
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("SELECT SUM(amount) FROM expenses WHERE date = ?", (today,))
+    result = c.fetchone()[0]
+    conn.close()
+    return result or 0.0
+
+def get_monthly_deposits():
+    today = date.today()
+    first_day = today.replace(day=1).strftime("%Y-%m-%d")
+    fifth_day = today.replace(day=5).strftime("%Y-%m-%d")
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("""
+        SELECT SUM(amount) FROM deposits 
+        WHERE date BETWEEN ? AND ?
+    """, (first_day, fifth_day))
+    result = c.fetchone()[0]
+    conn.close()
+    return result or 0.0
+
 # ========== Streamlit app ==========
 
 # Custom rerun function compatible with Streamlit 1.45.1+
@@ -104,10 +129,22 @@ def rerun():
 
 st.title("🏠 Roommate Expense Manager")
 
-menu = ["View Roommates", "Add Roommate", "Remove Roommate", "Add Expense", "View Today's Expenses"]
+menu = ["Dashboard", "View Roommates", "Add Roommate", "Remove Roommate", "Add Expense", "View Today's Expenses"]
 choice = st.sidebar.selectbox("Menu", menu)
 
-if choice == "View Roommates":
+if choice == "Dashboard":
+    st.subheader("📊 Overview (Today's Summary)")
+
+    total_expense_today = get_todays_total_expense()
+    total_deposits = get_monthly_deposits()
+    remaining = total_deposits - total_expense_today
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("💸 Today's Expenses", f"${total_expense_today:.2f}")
+    col2.metric("💰 Deposits (1st–5th)", f"${total_deposits:.2f}")
+    col3.metric("🧾 Remaining Balance", f"${remaining:.2f}")
+
+elif choice == "View Roommates":
     st.subheader("Roommates List")
     roommates = get_roommates()
     if roommates:
@@ -144,10 +181,10 @@ elif choice == "Add Expense":
     else:
         selected = st.selectbox("Select Roommate", roommates)
         amount = st.number_input("Amount", min_value=0.01, format="%.2f")
-        date = st.date_input("Date", value=datetime.now())
+        date_val = st.date_input("Date", value=datetime.now())
         description = st.text_area("Description")
         if st.button("Add Expense"):
-            add_expense(selected, amount, date.strftime("%Y-%m-%d"), description)
+            add_expense(selected, amount, date_val.strftime("%Y-%m-%d"), description)
             st.success("Expense added successfully.")
             rerun()
 
@@ -159,4 +196,3 @@ elif choice == "View Today's Expenses":
             st.write(f"- {roommate} paid ${amount:.2f} for {desc}")
     else:
         st.info("No expenses recorded for today.")
-
