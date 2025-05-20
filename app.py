@@ -149,9 +149,13 @@ def rerun():
 
 st.title("🏠 Roommate Expense Manager")
 
-menu = ["Dashboard", "View Roommates", "Add Roommate", "Remove Roommate", "Add Expense", "View Today's Expenses"]
-menu.append("Add Deposit")
-menu.append("View Deposits")
+menu = [
+    "Dashboard",
+    "Manage Roommates",
+    "Add Expense",
+    "View Today's Expenses",
+    "Manage Deposits"
+]
 
 choice = st.sidebar.selectbox("Menu", menu)
 
@@ -167,29 +171,29 @@ if choice == "Dashboard":
     col2.metric("💰 Deposits (1st–Today)", f"₹{total_deposits:.2f}")
     col3.metric("🧾 Remaining Balance", f"₹{remaining:.2f}")
 
-elif choice == "View Roommates":
-    st.subheader("Roommates List")
-    roommates = get_roommates()
-    if roommates:
-        for mate in roommates:
-            st.write(f"- {mate}")
+    st.markdown("---")
+    st.subheader("Today's Expenses Detail")
+    expenses = get_todays_expenses()
+    if expenses:
+        for roommate, amount, desc in expenses:
+            st.write(f"- {roommate} paid ₹{amount:.2f} for {desc}")
     else:
-        st.info("No roommates added yet.")
+        st.info("No expenses recorded for today.")
 
-elif choice == "Add Roommate":
-    st.subheader("Add New Roommate")
+elif choice == "Manage Roommates":
+    st.subheader("Add Roommate")
     new_name = st.text_input("Roommate Name")
-    if st.button("Add") and new_name.strip():
+    if st.button("Add Roommate") and new_name.strip():
         add_roommate(new_name.strip())
         st.success(f"Roommate '{new_name.strip()}' added.")
         rerun()
 
-elif choice == "Remove Roommate":
+    st.markdown("---")
     st.subheader("Remove Roommate")
     roommates = get_roommates()
     if roommates:
         selected = st.selectbox("Select roommate to remove", roommates)
-        if st.button("Remove"):
+        if st.button("Remove Roommate"):
             remove_roommate(selected)
             st.warning(f"Roommate '{selected}' removed.")
             rerun()
@@ -220,7 +224,7 @@ elif choice == "View Today's Expenses":
     else:
         st.info("No expenses recorded for today.")
 
-elif choice == "Add Deposit":
+elif choice == "Manage Deposits":
     st.subheader("Add Deposit")
     roommates = get_roommates()
     if not roommates:
@@ -234,7 +238,7 @@ elif choice == "Add Deposit":
             st.success(f"Deposit of ₹{amount:.2f} added for {selected}.")
             rerun()
 
-elif choice == "View Deposits":
+    st.markdown("---")
     st.subheader("All Deposits")
     deposits = get_deposits()
     if deposits:
