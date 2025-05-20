@@ -95,8 +95,6 @@ def get_todays_expenses():
     conn.close()
     return rows
 
-# ========== Additional Functions for Dashboard ==========
-
 def get_todays_total_expense():
     today = datetime.now().strftime("%Y-%m-%d")
     conn = get_connection()
@@ -120,8 +118,6 @@ def get_monthly_deposits():
     conn.close()
     return result or 0.0
 
-# ========== Deposit operations ==========
-
 def add_deposit(roommate, amount, date):
     conn = get_connection()
     c = conn.cursor()
@@ -140,12 +136,12 @@ def get_deposits():
     conn.close()
     return rows
 
-# ========== Streamlit app ==========
-
-# Custom rerun function compatible with Streamlit 1.45.1+
+# Custom rerun function for Streamlit
 def rerun():
     import streamlit.runtime.scriptrunner as scriptrunner
     raise scriptrunner.RerunException(scriptrunner.RerunData())
+
+# ========== Streamlit app ==========
 
 st.title("🏠 Roommate Expense Manager")
 
@@ -170,6 +166,15 @@ if choice == "Dashboard":
     col1.metric("💸 Today's Expenses", f"₹{total_expense_today:.2f}")
     col2.metric("💰 Deposits (1st–Today)", f"₹{total_deposits:.2f}")
     col3.metric("🧾 Remaining Balance", f"₹{remaining:.2f}")
+
+    st.markdown("---")
+
+    st.subheader("Roommates List")
+    roommates = get_roommates()
+    if roommates:
+        st.write(", ".join(roommates))
+    else:
+        st.info("No roommates found. Please add roommates.")
 
     st.markdown("---")
     st.subheader("Today's Expenses Detail")
