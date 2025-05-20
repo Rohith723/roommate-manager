@@ -109,13 +109,13 @@ def get_todays_total_expense():
 def get_monthly_deposits():
     today = date.today()
     first_day = today.replace(day=1).strftime("%Y-%m-%d")
-    fifth_day = today.replace(day=5).strftime("%Y-%m-%d")
+    today_str = today.strftime("%Y-%m-%d")
     conn = get_connection()
     c = conn.cursor()
     c.execute("""
         SELECT SUM(amount) FROM deposits 
         WHERE date BETWEEN ? AND ?
-    """, (first_day, fifth_day))
+    """, (first_day, today_str))
     result = c.fetchone()[0]
     conn.close()
     return result or 0.0
@@ -150,8 +150,6 @@ def rerun():
 st.title("🏠 Roommate Expense Manager")
 
 menu = ["Dashboard", "View Roommates", "Add Roommate", "Remove Roommate", "Add Expense", "View Today's Expenses"]
-
-# Append deposits related menu options
 menu.append("Add Deposit")
 menu.append("View Deposits")
 
@@ -166,7 +164,7 @@ if choice == "Dashboard":
 
     col1, col2, col3 = st.columns(3)
     col1.metric("💸 Today's Expenses", f"₹{total_expense_today:.2f}")
-    col2.metric("💰 Deposits (1st–5th)", f"₹{total_deposits:.2f}")
+    col2.metric("💰 Deposits (1st–Today)", f"₹{total_deposits:.2f}")
     col3.metric("🧾 Remaining Balance", f"₹{remaining:.2f}")
 
 elif choice == "View Roommates":
