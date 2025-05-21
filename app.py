@@ -1,220 +1,227 @@
 import streamlit as st
 import sqlite3
-import os
-from datetime import datetime, date
+from datetime import datetime
 
-# ========== Database setup ==========
-
-DB_PATH = "data/roommates.db"
+# ----------------------- Database Functions -----------------------
 
 def get_connection():
-    os.makedirs("data", exist_ok=True)
-    return sqlite3.connect(DB_PATH, check_same_thread=False)
+    return sqlite3.connect("roommate_expenses.db")
 
 def create_tables():
     conn = get_connection()
     c = conn.cursor()
 
     c.execute('''
-        CREATE TABLE IF NOT EXISTS roommates (
+        CREATE TABLE IF NOT EXISTS rooms (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT UNIQUE
+            room_name TEXT UNIQUE,
+            password TEXT
         )
     ''')
+
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS roommates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT,
+            room_id INTEGER,
+            UNIQUE(name, room_id),
+            FOREIGN KEY (room_id) REFERENCES rooms(id)
+        )
+    ''')
+
     c.execute('''
         CREATE TABLE IF NOT EXISTS expenses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             roommate TEXT,
             amount REAL,
             date TEXT,
-            description TEXT
+            description TEXT,
+            room_id INTEGER,
+            FOREIGN KEY (room_id) REFERENCES rooms(id)
         )
     ''')
+
     c.execute('''
         CREATE TABLE IF NOT EXISTS deposits (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            roommate TEXT,
             amount REAL,
-            date TEXT
+            roommate TEXT,
+            date TEXT,
+            room_id INTEGER,
+            FOREIGN KEY (room_id) REFERENCES rooms(id)
         )
     ''')
+
     conn.commit()
     conn.close()
 
-create_tables()
-
-# ========== DB Operations ==========
-
-def get_roommates():
+def register_room(room_name, password):
     conn = get_connection()
-    rows = conn.execute("SELECT name FROM roommates").fetchall()
-    conn.close()
-    return [r[0] for r in rows]
-
-def add_roommate(name):
-    conn = get_connection()
+    c = conn.cursor()
     try:
-        conn.execute("INSERT INTO roommates (name) VALUES (?)", (name,))
+        c.execute("INSERT INTO rooms (room_name, password) VALUES (?, ?)", (room_name, password))
         conn.commit()
+        st.success("Room registered successfully. Please login.")
     except sqlite3.IntegrityError:
-        st.warning(f"Roommate '{name}' already exists.")
+        st.warning("Room already exists.")
     finally:
         conn.close()
 
-def remove_roommate(name):
+def login_room(room_name, password):
     conn = get_connection()
-    conn.execute("DELETE FROM roommates WHERE name = ?", (name,))
+    c = conn.cursor()
+    c.execute("SELECT id FROM rooms WHERE room_name = ? AND password = ?", (room_name, password))
+    result = c.fetchone()
+    conn.close()
+    return result[0] if result else None
+
+def get_roommates(room_id):
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("SELECT name FROM roommates WHERE room_id = ?", (room_id,))
+    rows = c.fetchall()
+    conn.close()
+    return [row[0] for row in rows]
+
+def add_roommate(name, room_id):
+    conn = get_connection()
+    c = conn.cursor()
+    try:
+        c.execute("INSERT INTO roommates (name, room_id) VALUES (?, ?)", (name, room_id))
+        conn.commit()
+    except sqlite3.IntegrityError:
+        st.warning("Roommate already exists.")
+    finally:
+        conn.close()
+
+def remove_roommate(name, room_id):
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("DELETE FROM roommates WHERE name = ? AND room_id = ?", (name, room_id))
     conn.commit()
     conn.close()
 
-def add_expense(roommate, amount, date, desc):
+def add_expense(roommate, amount, description, room_id):
     conn = get_connection()
-    conn.execute(
-        "INSERT INTO expenses (roommate, amount, date, description) VALUES (?, ?, ?, ?)",
-        (roommate, amount, date, desc)
-    )
+    c = conn.cursor()
+    c.execute("INSERT INTO expenses (roommate, amount, date, description, room_id) VALUES (?, ?, ?, ?, ?)",
+              (roommate, amount, datetime.today().strftime('%Y-%m-%d'), description, room_id))
     conn.commit()
     conn.close()
 
-def get_todays_expenses():
-    today = datetime.now().strftime("%Y-%m-%d")
+def get_todays_expenses(room_id):
     conn = get_connection()
-    rows = conn.execute(
-        "SELECT roommate, amount, description FROM expenses WHERE date = ?", (today,)
-    ).fetchall()
+    c = conn.cursor()
+    today = datetime.today().strftime('%Y-%m-%d')
+    c.execute("SELECT roommate, amount, description FROM expenses WHERE date = ? AND room_id = ?", (today, room_id))
+    rows = c.fetchall()
     conn.close()
     return rows
 
-def get_todays_total_expense():
-    today = datetime.now().strftime("%Y-%m-%d")
+def add_deposit(amount, roommate, room_id):
     conn = get_connection()
-    total = conn.execute(
-        "SELECT SUM(amount) FROM expenses WHERE date = ?", (today,)
-    ).fetchone()[0]
-    conn.close()
-    return total or 0.0
-
-def add_deposit(roommate, amount, date):
-    conn = get_connection()
-    conn.execute(
-        "INSERT INTO deposits (roommate, amount, date) VALUES (?, ?, ?)",
-        (roommate, amount, date)
-    )
+    c = conn.cursor()
+    c.execute("INSERT INTO deposits (amount, roommate, date, room_id) VALUES (?, ?, ?, ?)",
+              (amount, roommate, datetime.today().strftime('%Y-%m-%d'), room_id))
     conn.commit()
     conn.close()
 
-def get_monthly_deposits():
-    today = date.today()
-    first = today.replace(day=1).strftime("%Y-%m-%d")
-    today_str = today.strftime("%Y-%m-%d")
+def get_deposits(room_id):
     conn = get_connection()
-    total = conn.execute(
-        "SELECT SUM(amount) FROM deposits WHERE date BETWEEN ? AND ?", (first, today_str)
-    ).fetchone()[0]
-    conn.close()
-    return total or 0.0
-
-def get_deposits():
-    conn = get_connection()
-    rows = conn.execute("SELECT roommate, amount, date FROM deposits ORDER BY date DESC").fetchall()
+    c = conn.cursor()
+    c.execute("SELECT roommate, amount, date FROM deposits WHERE room_id = ?", (room_id,))
+    rows = c.fetchall()
     conn.close()
     return rows
 
-# rerun helper
-def rerun():
-    import streamlit.runtime.scriptrunner as rs
-    raise rs.RerunException(rs.RerunData())
+# ---------------------------- Main App ----------------------------
 
-# ========== Streamlit app ==========
+def main():
+    st.set_page_config(page_title="Roommate Expense Manager")
+    st.title("Roommate Expense Manager")
 
-st.title("🏠 Roommate Expense Manager")
+    create_tables()
 
-menu = ["Dashboard", "Manage Roommates", "Add Expense", "Manage Deposits"]
-choice = st.sidebar.selectbox("Menu", menu)
+    if 'room_id' not in st.session_state:
+        login_tab, register_tab = st.tabs(["Login", "Register"])
 
-if choice == "Dashboard":
-    st.subheader("📊 Overview (Today's Summary)")
-    exp_today = get_todays_total_expense()
-    dep_month = get_monthly_deposits()
-    rem = dep_month - exp_today
+        with login_tab:
+            st.subheader("Login to Your Room")
+            room_name = st.text_input("Room Name")
+            password = st.text_input("Password", type="password")
+            if st.button("Login"):
+                room_id = login_room(room_name, password)
+                if room_id:
+                    st.session_state.room_id = room_id
+                    st.success("Logged in successfully!")
+                    st.rerun()
+                else:
+                    st.error("Invalid room name or password")
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric("💸 Today's Expenses", f"₹{exp_today:.2f}")
-    c2.metric("💰 Deposits (1st–Today)", f"₹{dep_month:.2f}")
-    c3.metric("🧾 Remaining Balance", f"₹{rem:.2f}")
+        with register_tab:
+            st.subheader("Register a New Room")
+            new_room = st.text_input("New Room Name")
+            new_password = st.text_input("Set Password", type="password")
+            if st.button("Register"):
+                register_room(new_room, new_password)
+        return
 
-    st.markdown("---")
-    st.subheader("Roommates")
-    rms = get_roommates()
-    st.write(" • ".join(rms) if rms else "No roommates yet.")
+    menu = ["Manage Roommates", "Add Expense", "View Today's Expenses", "Deposit Money", "View Deposits", "Logout"]
+    choice = st.sidebar.selectbox("Menu", menu)
+    room_id = st.session_state.room_id
 
-    st.markdown("---")
-    st.subheader("Today's Expenses Detail")
-    details = get_todays_expenses()
-    if details:
-        for rm, amt, desc in details:
-            st.write(f"- {rm} paid ₹{amt:.2f} for {desc}")
-    else:
-        st.info("No expenses recorded today.")
+    if choice == "Manage Roommates":
+        st.subheader("Add or Remove Roommates")
+        roommates = get_roommates(room_id)
+        st.write("Current Roommates:", roommates)
 
-elif choice == "Manage Roommates":
-    st.subheader("Manage Roommates")
-    rms = get_roommates()
+        new_roommate = st.text_input("Enter new roommate name")
+        if st.button("Add Roommate"):
+            add_roommate(new_roommate, room_id)
+            st.success(f"Roommate '{new_roommate}' added.")
+            st.rerun()
 
-    col1, col2 = st.columns([2,2])
-    with col1:
-        name = st.text_input("Enter Name")
-        if name and name not in rms and st.button("Add Roommate"):
-            add_roommate(name)
-            st.success(f"Added '{name}'")
-            rerun()
-    with col2:
-        if rms:
-            to_remove = st.selectbox("Select to Remove", rms)
-            if st.button("Remove Roommate"):
-                remove_roommate(to_remove)
-                st.warning(f"Removed '{to_remove}'")
-                rerun()
-        else:
-            st.info("No roommates to remove.")
+        remove_name = st.selectbox("Select roommate to remove", roommates)
+        if st.button("Remove Roommate"):
+            remove_roommate(remove_name, room_id)
+            st.success(f"Roommate '{remove_name}' removed.")
+            st.rerun()
 
-elif choice == "Add Expense":
-    st.subheader("Add Expense")
-    rms = get_roommates()
-    if not rms:
-        st.warning("Add roommates first.")
-    else:
-        rm = st.selectbox("Roommate", rms)
-        amt = st.number_input("Amount", min_value=0.01, format="%.2f")
-        d = st.date_input("Date", value=datetime.now())
-        desc = st.text_input("Description")
+    elif choice == "Add Expense":
+        st.subheader("Add Today's Expense")
+        roommates = get_roommates(room_id)
+        roommate = st.selectbox("Who paid?", roommates)
+        amount = st.number_input("Amount Spent", min_value=0.0, format="%.2f")
+        description = st.text_input("Description")
         if st.button("Add Expense"):
-            add_expense(rm, amt, d.strftime("%Y-%m-%d"), desc)
+            add_expense(roommate, amount, description, room_id)
             st.success("Expense added.")
-            rerun()
 
-elif choice == "Manage Deposits":
-    st.subheader("Manage Deposits")
-    rms = get_roommates()
+    elif choice == "View Today's Expenses":
+        st.subheader("Today's Expenses")
+        expenses = get_todays_expenses(room_id)
+        for e in expenses:
+            st.write(f"{e[0]} spent Rs. {e[1]} on {e[2]}")
 
-    col1, col2 = st.columns([2,3])
-    with col1:
-        if not rms:
-            st.warning("Add roommates first.")
-        else:
-            rm = st.selectbox("Roommate", rms, key="dep_rm")
-            amt = st.number_input("Amount", min_value=0.01, format="%.2f", key="dep_amt")
-            d = st.date_input("Date", value=datetime.now(), key="dep_date")
-            if st.button("Add Deposit"):
-                add_deposit(rm, amt, d.strftime("%Y-%m-%d"))
-                st.success("Deposit added.")
-                rerun()
+    elif choice == "Deposit Money":
+        st.subheader("Add Deposit")
+        roommates = get_roommates(room_id)
+        roommate = st.selectbox("Who deposited?", roommates)
+        amount = st.number_input("Deposit Amount", min_value=0.0, format="%.2f")
+        if st.button("Add Deposit"):
+            add_deposit(amount, roommate, room_id)
+            st.success("Deposit recorded.")
 
-    with col2:
-        st.markdown("**All Deposits**")
-        deps = get_deposits()
-        if deps:
-            for rm, amt, dt in deps:
-                st.write(f"- {rm} deposited ₹{amt:.2f} on {dt}")
-        else:
-            st.info("No deposits yet.")
+    elif choice == "View Deposits":
+        st.subheader("All Deposits")
+        deposits = get_deposits(room_id)
+        for d in deposits:
+            st.write(f"{d[0]} deposited Rs. {d[1]} on {d[2]}")
+
+    elif choice == "Logout":
+        del st.session_state.room_id
+        st.success("Logged out successfully.")
+        st.rerun()
+
+if __name__ == '__main__':
+    main()
